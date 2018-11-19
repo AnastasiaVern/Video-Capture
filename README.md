@@ -1,2 +1,2 @@
 # Video-Capture
-EasyCap based video grabber fow Windows
+EasyCap based video grabber for Windows
