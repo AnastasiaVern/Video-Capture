@@ -17,9 +17,7 @@
 #include <ctype.h>
 
 using namespace cv;
-using namespace std;
 using namespace cv::motempl;
-
 
 // Function for Face Detection 
 void detectAndDraw(Mat& img, CascadeClassifier& cascade,
@@ -29,12 +27,14 @@ static bool update_mhi(const Mat& img, Mat& dst, int diff_threshold);
 //Function for Clicking with Mouse
 void myMouseCallback(int event, int x, int y, int flags, void* param);
 
+////////////////////////////////////////////////////////
+//-------------------PARAMETERS-------------------------
+
 // various tracking parameters (in seconds)
 const double MHI_DURATION = 5;
 const double MAX_TIME_DELTA = 0.5;
 const double MIN_TIME_DELTA = 0.05;
-int region_coordinates[10][4]; //координаты регионов, в которых надо определять движение.
-int dig_key = 0;//переменная, хранящее нажатую кнопку
+int region_coordinates[2][4]; //координаты регионов, в которых надо определять движение.
 
 void on_MouseHandle(int event, int x, int y, int flags, void* param);
 void DrawRectangle(Mat& img, Rect box);
@@ -47,30 +47,26 @@ Mat frame;
 //Define detection params
 std::string cascadeName, nestedCascadeName;
 // number of cyclic frame buffer used for motion detection
-// (should, probably, depend on FPS)
-// ring image buffer
-vector<Mat> buf;
+std::vector<Mat> buf;
 int last = 0;
-
 // temporary images
 Mat mhi, orient, mask, segmask, zplane;
-vector<Rect> regions;
-
-// parameters:
-//  img - input video frame
-//  dst - resultant motion picture
-//  args - optional parameters
+std::vector<Rect> regions;
 
 int main(int argc, char** argv)
 {
-	const int id = 1;
+	const int id = -1;
 	bool cam1Event, cam2Event;
 	VideoCapture cam(id);
+	std::vector<Mat> q1,q2;
+	q1.reserve(60);
+	q2.reserve(60);
 	char* text1 = "Camera 1";
 	char* text2 = "Camera 2";
 	char file_name[80];
-	int counter1, counter2 = 5;
 	bool cam_flag = true;
+	bool startrec1 = false;
+	bool startrec2 = false;
 	Mat motion;
 	Mat frame1_copy, frame2_copy, frame1_copy_mask, frame2_copy_mask;
 	IplImage *image = new IplImage(frame);
@@ -102,46 +98,50 @@ int main(int argc, char** argv)
 	cam.set(CAP_PROP_FRAME_WIDTH, 500.0);
 	cam.set(CAP_PROP_FRAME_HEIGHT, 500.0);
 
-	//const std::string file_name = "cam_record.avi";
-	//int fourcc = static_cast<int>(cam.get(CAP_PROP_FOURCC));
 	double fps = cam.get(CAP_PROP_FPS);
 	Size S = Size((int)cam.get(CAP_PROP_FRAME_WIDTH), (int)cam.get(CAP_PROP_FRAME_HEIGHT));
 
-	//vd_file.open(file_name, VideoWriter::fourcc('M', 'P', '4', '2'), fps, S);
+	auto timestamp = std::chrono::system_clock::now();
+	std::time_t time = std::chrono::system_clock::to_time_t(timestamp);
+	struct tm * now = localtime(&time);
 
-	/*if (!vd_file.isOpened())
+	strftime(file_name, 80, "%Y-%m-%d.wmv", now);
+	vd_file.open(file_name, VideoWriter::fourcc('W', 'M', 'V', '2'), fps, S, true);
+	if (!vd_file.isOpened())
 	{
 	std::cout << "Could not open the video file for write." << std::endl;
-	return -1;
-	} */
+	} 
 	// Capture frames from video, detect faces and detect motions
 	std::cout << "Face Detection and Motion Detection Started...." << std::endl;
 	namedWindow("CAM1_Motion", WINDOW_NORMAL);
 	namedWindow("CAM2_Motion", WINDOW_NORMAL);
-	bool file_released;
+	
 	while (true)
 	{
-		file_released = false;
 		auto timestamp = std::chrono::system_clock::now();
 		std::time_t time = std::chrono::system_clock::to_time_t(timestamp);
-		struct tm * now = localtime(&time);
 		auto output = std::ctime(&time);
-		strftime(file_name, 80, "%Y-%m-%d.", now);
-		vd_file.open(file_name, VideoWriter::fourcc('M', 'P', '4', '2'), fps, S, true);
-		if (!vd_file.isOpened())
-		{
-		std::cout << "Could not open the video file for write." << std::endl;
-		} 
+		
 		setMouseCallback("Camera 1", myMouseCallback, NULL); //подпрограмма mMouseCallback при событиях, связанных с мышью в окне 
 		if (cam_flag) {
 			cam >> frame;
 			if (frame.empty())
 				break;
+			
+			if (q1.size() == 60) 
+				q1.clear(); 
+			else 
+				q1.push_back(frame);
+
 			cam1Event = update_mhi(frame, motion, 30);
-			if (cam1Event == true) {
-				std::cout << "COOL_CAM1" << std::endl;
+		//	std::cout << "CAM EVENT" << cam1Event << std::endl;
+			if (cam1Event == true && startrec1==false) {
+					for (int i = 0; i < q1.size(); i++)
+					{
+						vd_file << q1.at(i);
+					}
+					startrec1 = true;
 			}
-			else { vd_file.release(); file_released = true; }
 			imshow("CAM1_Motion", motion);
 			resizeWindow("CAM1_Motion", 400, 250);
 			putText(frame, std::string(output), Point2f(250, (frame.rows - 50)), FONT_HERSHEY_COMPLEX_SMALL, 1, Scalar(0, 0, 0), 1);
@@ -155,29 +155,25 @@ int main(int argc, char** argv)
 			{
 				rectangle(frame, cvPoint(region_coordinates[0][0], region_coordinates[0][1]), cvPoint(region_coordinates[0][2], region_coordinates[0][3]), CV_RGB(0, 0, 0), CV_FILLED, CV_AA, 0);
 			}
-			/*if (region_coordinates[dig_key][0] != 0 && region_coordinates[dig_key][1] != 0
-				&& region_coordinates[dig_key][2] == 0 && region_coordinates[dig_key][3] == 0) //Рисуем прямоугольник. Если есть в переменной только одни координаты - рисуем точку по этим координатам.
-				rectangle(frame, cvPoint(region_coordinates[dig_key][0], region_coordinates[dig_key][1]), cvPoint(region_coordinates[dig_key][0] + 1, region_coordinates[dig_key][1] + 1), CV_RGB(0, 0, 0), CV_FILLED, CV_AA, 0);
 
-			if (region_coordinates[dig_key][0] != 0 && region_coordinates[dig_key][1] != 0
-				&& region_coordinates[dig_key][2] != 0 && region_coordinates[dig_key][3] != 0) //А если в переменной двое наборов координат - рисуем полностью прямоугольник.
-				rectangle(frame, cvPoint(region_coordinates[dig_key][0], region_coordinates[dig_key][1]), cvPoint(region_coordinates[dig_key][2], region_coordinates[dig_key][3]), CV_RGB(0, 0, 0), CV_FILLED, CV_AA, 0);
-			*/
 			frame2_copy = frame.clone();
 			detectAndDraw(frame, cascade, nestedCascade, scale, text1);
-			if (file_released==false) vd_file << frame;
+			if (startrec1) { vd_file << frame; std::cout << "IM HERE" << std::endl; }
 			cam_flag = false;
 
 			char c = waitKey(33);
 			if (c == 105) {
 				putText(frame1_copy, "CASH IN", Point2f(100, (frame.rows - 10)), FONT_HERSHEY_DUPLEX, 2, Scalar(253, 63, 0), 1);
 				imshow("Camera 1", frame1_copy);
+				imwrite("CASH_IN.jpg", frame1_copy);
 				putText(frame2_copy, "CASH IN", Point2f(100, (frame.rows - 10)), FONT_HERSHEY_DUPLEX, 2, Scalar(253, 63, 0), 1);
 				imshow("Camera 2", frame2_copy);
+
 			}
 			if (c == 111) {
 				putText(frame1_copy, "CASH OUT", Point2f(100, (frame.rows - 10)), FONT_HERSHEY_DUPLEX, 2, Scalar(253, 63, 0), 1);
 				imshow("Camera 1", frame1_copy);
+				imwrite("CASH_OUT.jpg", frame1_copy);
 				putText(frame2_copy, "CASH OUT", Point2f(100, (frame.rows - 10)), FONT_HERSHEY_DUPLEX, 2, Scalar(253, 63, 0), 1);
 				imshow("Camera 2", frame2_copy);
 			}
@@ -186,8 +182,21 @@ int main(int argc, char** argv)
 			cam >> frame;
 			if (frame.empty())
 				break;
+
+			if (q2.size() == 60)
+				q2.clear();
+			else
+				q2.push_back(frame);
+
 			cam2Event = update_mhi(frame, motion, 30);
-			if (cam2Event == true) { std::cout << "COOL_CAM2" << std::endl; }
+			if (cam2Event == true && startrec2 == false) {
+					std::cout << "COOL CAM2";
+					for (int i = 0; i < q2.size(); i++)
+					{
+						vd_file << q2.at(i);
+					}
+					startrec2 = true;
+			}
 			imshow("CAM2_Motion", motion);
 			resizeWindow("CAM2_Motion", 400, 250);
 
@@ -205,6 +214,7 @@ int main(int argc, char** argv)
 			}
 			frame1_copy = frame.clone();
 			detectAndDraw(frame, cascade, nestedCascade, scale, text2);
+			if (startrec2) vd_file << frame;
 			cam_flag = true;
 
 			char c = waitKey(33);
@@ -213,25 +223,18 @@ int main(int argc, char** argv)
 				imshow("Camera 1", frame1_copy);
 				putText(frame2_copy, "CASH IN", Point2f(150, (frame.rows - 20)), FONT_HERSHEY_COMPLEX, 2, Scalar(253, 63, 0), 1);
 				imshow("Camera 2", frame2_copy);
+				imwrite("CASH_IN.jpg", frame2_copy);
 			}
 			if (c == 111) {
 				putText(frame1_copy, "CASH OUT", Point2f(150, (frame.rows - 20)), FONT_HERSHEY_COMPLEX, 2, Scalar(253, 63, 0), 1);
 				imshow("Camera 1", frame1_copy);
 				putText(frame2_copy, "CASH OUT", Point2f(150, (frame.rows - 20)), FONT_HERSHEY_COMPLEX, 2, Scalar(253, 63, 0), 1);
 				imshow("Camera 2", frame2_copy);
+				imwrite("CASH_OUT.jpg", frame2_copy);
 			}
-			// Mat cropped = frame(Rect());
 		}
 		char c = waitKey(33);
-		/*	if (cam1Event==false) {
-				counter1--;
-			}
-			else if ( cam2Event == false) {
-				counter2--;
-			}
-			else {
-
-			} */
+	
 		if (c == 113 || c == 81) //коды кнопки "q" - в английской и русской раскладках. 
 		{
 			cam.release();
@@ -363,6 +366,7 @@ static bool  update_mhi(const Mat& img, Mat& dst, int diff_threshold)
 				continue;
 			color = Scalar(0, 0, 255);
 			magnitude = 30;
+			event_ = true;
 		}
 
 		// select component ROI
@@ -386,9 +390,7 @@ static bool  update_mhi(const Mat& img, Mat& dst, int diff_threshold)
 			(comp_rect.y + comp_rect.height / 2));
 
 		circle(img, center, cvRound(magnitude*1.2), color, 3, 16, 0);
-		//line(img, center, Point(cvRound(center.x + magnitude*cos(angle*CV_PI / 180)),
-			//cvRound(center.y - magnitude*sin(angle*CV_PI / 180))), color, 3, 16, 0);
-		event_ = true;
+		
 	}
 	return event_;
 }
@@ -412,16 +414,6 @@ void myMouseCallback(int event, int x, int y, int flags, void* param) //опис
 		    region_coordinates[0][1] = y;
 	   }
 
-	/*   if (region_coordinates[dig_key][0] != 0 && region_coordinates[dig_key][1] != 0 && region_coordinates[dig_key][2] == 0 && region_coordinates[dig_key][3] == 0) //если это второе нажатие(заполнена первая половина координат - х и у верхнего угла региона), то записываем в переменную вторую половину - х и у нижнего угла региона
-		{
-			region_coordinates[dig_key][2] = x; //dig_key - определяет, какой регион устанавливается сейчас. А меняется он нажатием цифровых кнопок.
-			region_coordinates[dig_key][3] = y;
-		}
-		if (region_coordinates[dig_key][0] == 0 && region_coordinates[dig_key][1] == 0)//если это первое нажатие(не заполнена первая половина координат ), то записываем в переменную первую половину.
-		{
-			region_coordinates[dig_key][0] = x;
-			region_coordinates[dig_key][1] = y;
-		} */
 		break; 
 	}
 }
