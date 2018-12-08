@@ -26,7 +26,7 @@ void detectAndDraw(Mat& img, CascadeClassifier& cascade,
 static bool update_mhi(const Mat& img, Mat& dst, int diff_threshold);
 //Function for Clicking with Mouse
 void myMouseCallback(int event, int x, int y, int flags, void* param);
-
+void putMask();
 ////////////////////////////////////////////////////////
 //-------------------PARAMETERS-------------------------
 
@@ -55,10 +55,10 @@ std::vector<Rect> regions;
 
 int main(int argc, char** argv)
 {
-	const int id = -1;
+	const int id = 0;
 	bool cam1Event, cam2Event;
 	VideoCapture cam(id);
-	std::vector<Mat> q1,q2;
+	std::vector<Mat> q1, q2;
 	q1.reserve(60);
 	q2.reserve(60);
 	char* text1 = "Camera 1";
@@ -88,7 +88,7 @@ int main(int argc, char** argv)
 		return 0;
 	}
 	buf.resize(2);
-	
+
 	cam.open(id);
 	if (!cam.isOpened()) {
 		std::cout << "Could not open the video camera for read." << std::endl;
@@ -109,52 +109,42 @@ int main(int argc, char** argv)
 	vd_file.open(file_name, VideoWriter::fourcc('W', 'M', 'V', '2'), fps, S, true);
 	if (!vd_file.isOpened())
 	{
-	std::cout << "Could not open the video file for write." << std::endl;
-	} 
+		std::cout << "Could not open the video file for write." << std::endl;
+	}
 	// Capture frames from video, detect faces and detect motions
 	std::cout << "Face Detection and Motion Detection Started...." << std::endl;
 	namedWindow("CAM1_Motion", WINDOW_NORMAL);
 	namedWindow("CAM2_Motion", WINDOW_NORMAL);
-	
+
 	while (true)
 	{
 		auto timestamp = std::chrono::system_clock::now();
 		std::time_t time = std::chrono::system_clock::to_time_t(timestamp);
 		auto output = std::ctime(&time);
-		
+
 		setMouseCallback("Camera 1", myMouseCallback, NULL); //подпрограмма mMouseCallback при событиях, связанных с мышью в окне 
 		if (cam_flag) {
 			cam >> frame;
 			if (frame.empty())
 				break;
-			
-			if (q1.size() == 60) 
-				q1.clear(); 
-			else 
+
+			if (q1.size() == 60)
+				q1.clear();
+			else
 				q1.push_back(frame);
 
 			cam1Event = update_mhi(frame, motion, 30);
-		//	std::cout << "CAM EVENT" << cam1Event << std::endl;
-			if (cam1Event == true && startrec1==false) {
-					for (int i = 0; i < q1.size(); i++)
-					{
-						vd_file << q1.at(i);
-					}
-					startrec1 = true;
+			//	std::cout << "CAM EVENT" << cam1Event << std::endl;
+			if (cam1Event == true && startrec1 == false) {
+				for (int i = 0; i < q1.size(); i++)
+				{
+					vd_file << q1.at(i);
+				}
+				startrec1 = true;
 			}
 			imshow("CAM1_Motion", motion);
 			resizeWindow("CAM1_Motion", 400, 250);
-			putText(frame, std::string(output), Point2f(250, (frame.rows - 50)), FONT_HERSHEY_COMPLEX_SMALL, 1, Scalar(0, 0, 0), 1);
-			if (region_coordinates[0][0] != 0 && region_coordinates[0][1] != 0
-				&& region_coordinates[0][2] == 0 && region_coordinates[0][3] == 0) //Рисуем прямоугольник. Если есть в переменной только одни координаты - рисуем точку по этим координатам.
-			{
-				rectangle(frame, cvPoint(region_coordinates[0][0], region_coordinates[0][1]), cvPoint(region_coordinates[0][0] + 1, region_coordinates[0][1] + 1), CV_RGB(0, 0, 0), CV_FILLED, CV_AA, 0);
-			}
-			if (region_coordinates[0][0] != 0 && region_coordinates[0][1] != 0
-				&& region_coordinates[0][2] != 0 && region_coordinates[0][3] != 0) //А если в переменной двое наборов координат - рисуем полностью прямоугольник.
-			{
-				rectangle(frame, cvPoint(region_coordinates[0][0], region_coordinates[0][1]), cvPoint(region_coordinates[0][2], region_coordinates[0][3]), CV_RGB(0, 0, 0), CV_FILLED, CV_AA, 0);
-			}
+			putMask();
 
 			frame2_copy = frame.clone();
 			detectAndDraw(frame, cascade, nestedCascade, scale, text1);
@@ -190,28 +180,19 @@ int main(int argc, char** argv)
 
 			cam2Event = update_mhi(frame, motion, 30);
 			if (cam2Event == true && startrec2 == false) {
-					std::cout << "COOL CAM2";
-					for (int i = 0; i < q2.size(); i++)
-					{
-						vd_file << q2.at(i);
-					}
-					startrec2 = true;
+				std::cout << "COOL CAM2";
+				for (int i = 0; i < q2.size(); i++)
+				{
+					vd_file << q2.at(i);
+				}
+				startrec2 = true;
 			}
 			imshow("CAM2_Motion", motion);
 			resizeWindow("CAM2_Motion", 400, 250);
 
 			putText(frame, std::string(output), Point2f(250, (frame.rows - 50)), FONT_HERSHEY_COMPLEX_SMALL, 1, Scalar(0, 0, 0), 1);
 			setMouseCallback("Camera 2", myMouseCallback, NULL); //подпрограмма myMouseCallback при событиях, связанных с мышью в окне 
-			if (region_coordinates[0][0] != 0 && region_coordinates[0][1] != 0
-				&& region_coordinates[0][2] == 0 && region_coordinates[0][3] == 0) //Рисуем прямоугольник. Если есть в переменной только одни координаты - рисуем точку по этим координатам.
-			{
-				rectangle(frame, cvPoint(region_coordinates[0][0], region_coordinates[0][1]), cvPoint(region_coordinates[0][0] + 1, region_coordinates[0][1] + 1), CV_RGB(0, 0, 0), CV_FILLED, CV_AA, 0);
-			}
-			if (region_coordinates[0][0] != 0 && region_coordinates[0][1] != 0
-				&& region_coordinates[0][2] != 0 && region_coordinates[0][3] != 0) //А если в переменной двое наборов координат - рисуем полностью прямоугольник.
-			{
-				rectangle(frame, cvPoint(region_coordinates[0][0], region_coordinates[0][1]), cvPoint(region_coordinates[0][2], region_coordinates[0][3]), CV_RGB(0, 0, 0), CV_FILLED, CV_AA, 0);
-			}
+			putMask();
 			frame1_copy = frame.clone();
 			detectAndDraw(frame, cascade, nestedCascade, scale, text2);
 			if (startrec2) vd_file << frame;
@@ -234,7 +215,7 @@ int main(int argc, char** argv)
 			}
 		}
 		char c = waitKey(33);
-	
+
 		if (c == 113 || c == 81) //коды кнопки "q" - в английской и русской раскладках. 
 		{
 			cam.release();
@@ -390,31 +371,52 @@ static bool  update_mhi(const Mat& img, Mat& dst, int diff_threshold)
 			(comp_rect.y + comp_rect.height / 2));
 
 		circle(img, center, cvRound(magnitude*1.2), color, 3, 16, 0);
-		
+		if (region_coordinates[0][0] != 0 && region_coordinates[0][1] != 0
+			&& region_coordinates[0][2] == 0 && region_coordinates[0][3] == 0) //Рисуем прямоугольник. Если есть в переменной только одни координаты - рисуем точку по этим координатам.
+		{
+			rectangle(dst, cvPoint(region_coordinates[0][0], region_coordinates[0][1]), cvPoint(region_coordinates[0][0] + 1, region_coordinates[0][1] + 1), CV_RGB(0, 0, 0), CV_FILLED, CV_AA, 0);
+		}
+		if (region_coordinates[0][0] != 0 && region_coordinates[0][1] != 0
+			&& region_coordinates[0][2] != 0 && region_coordinates[0][3] != 0) //А если в переменной двое наборов координат - рисуем полностью прямоугольник.
+		{
+			rectangle(dst, cvPoint(region_coordinates[0][0], region_coordinates[0][1]), cvPoint(region_coordinates[0][2], region_coordinates[0][3]), CV_RGB(0, 0, 0), CV_FILLED, CV_AA, 0);
+		}
 	}
 	return event_;
 }
 
 void myMouseCallback(int event, int x, int y, int flags, void* param) //описываем что нам надо будет делать при событиях, связанных с мышью
 {
-	IplImage* img = (IplImage*) param;
+	IplImage* img = (IplImage*)param;
 	switch (event) { //вбираем действие в зависимости от событий
 	case CV_EVENT_MOUSEMOVE:     break; //ничего не делаем при движении мыши. А можно, например, кидать в консоль координаты под курсором: printf("%d x %d\n", x, y);
 
 	case CV_EVENT_LBUTTONDOWN: //при нажатии левой кнопки мыши
-		
-	if (region_coordinates[0][0] != 0 && region_coordinates[0][1] != 0 && region_coordinates[0][2] == 0 && region_coordinates[0][3] == 0) //если это второе нажатие(заполнена первая половина координат - х и у верхнего угла региона), то записываем в переменную вторую половину - х и у нижнего угла региона
-		{
-			 region_coordinates[0][2] = x; //dig_key - определяет, какой регион устанавливается сейчас. А меняется он нажатием цифровых кнопок.
-			 region_coordinates[0][3] = y;
-       }
-	 if (region_coordinates[0][0] == 0 && region_coordinates[0][1] == 0)//если это первое нажатие(не заполнена первая половина координат ), то записываем в переменную первую половину.
-	   {
-			region_coordinates[0][0] = x;
-		    region_coordinates[0][1] = y;
-	   }
 
-		break; 
+		if (region_coordinates[0][0] != 0 && region_coordinates[0][1] != 0 && region_coordinates[0][2] == 0 && region_coordinates[0][3] == 0) //если это второе нажатие(заполнена первая половина координат - х и у верхнего угла региона), то записываем в переменную вторую половину - х и у нижнего угла региона
+		{
+			region_coordinates[0][2] = x; //dig_key - определяет, какой регион устанавливается сейчас. А меняется он нажатием цифровых кнопок.
+			region_coordinates[0][3] = y;
+		}
+		if (region_coordinates[0][0] == 0 && region_coordinates[0][1] == 0)//если это первое нажатие(не заполнена первая половина координат ), то записываем в переменную первую половину.
+		{
+			region_coordinates[0][0] = x;
+			region_coordinates[0][1] = y;
+		}
+
+		break;
 	}
 }
 
+void putMask() {
+	if (region_coordinates[0][0] != 0 && region_coordinates[0][1] != 0
+		&& region_coordinates[0][2] == 0 && region_coordinates[0][3] == 0) //Рисуем прямоугольник. Если есть в переменной только одни координаты - рисуем точку по этим координатам.
+	{
+		rectangle(frame, cvPoint(region_coordinates[0][0], region_coordinates[0][1]), cvPoint(region_coordinates[0][0] + 1, region_coordinates[0][1] + 1), CV_RGB(0, 0, 0), CV_FILLED, CV_AA, 0);
+	}
+	if (region_coordinates[0][0] != 0 && region_coordinates[0][1] != 0
+		&& region_coordinates[0][2] != 0 && region_coordinates[0][3] != 0) //А если в переменной двое наборов координат - рисуем полностью прямоугольник.
+	{
+		rectangle(frame, cvPoint(region_coordinates[0][0], region_coordinates[0][1]), cvPoint(region_coordinates[0][2], region_coordinates[0][3]), CV_RGB(0, 0, 0), CV_FILLED, CV_AA, 0);
+	}
+}
